@@ -12,3 +12,5 @@ libraryDependencies ++= Seq(
   "com.lightbend.akka" %% "akka-stream-alpakka-ftp" % alpakkaVersion,
   "com.zengularity" %% "benji-s3" % benjiVersion
 )
+
+mainClass in Compile := Some("SftpPoll")
