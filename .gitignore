@@ -17,3 +17,6 @@ project/build.properties
 .scala_dependencies
 .worksheet
 .idea
+.bloop/
+.metals/
+project/.bloop/

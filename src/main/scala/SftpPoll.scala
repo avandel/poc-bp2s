@@ -1,14 +1,19 @@
 import java.net.InetAddress
+
 import scala.concurrent.duration._
 
 import akka.Done
 import akka.actor.ActorSystem
+import akka.kafka.ProducerSettings
+import akka.kafka.scaladsl.Producer
 import akka.stream.ActorMaterializer
 import akka.stream.alpakka.ftp.scaladsl.Sftp
 import akka.stream.alpakka.ftp.{ FtpCredentials, SftpIdentity, SftpSettings }
 import akka.stream.scaladsl.{ Sink, Source }
 import akka.util.ByteString
 import com.zengularity.benji.s3.{ S3, WSS3 }
+import org.apache.kafka.clients.producer.ProducerRecord
+import org.apache.kafka.common.serialization.StringSerializer
 import play.api.libs.ws.DefaultBodyWritables._
 import play.api.libs.ws.ahc.StandaloneAhcWSClient
 
@@ -25,6 +30,7 @@ object SftpPoll extends App {
   val s3Password = args(7)
   val s3Host = args(8)
   val intervalPoll = args(9).toInt
+  val kafkaTopic = args(10)
 
   args.foreach(println)
 
@@ -47,13 +53,14 @@ object SftpPoll extends App {
   implicit val ws: StandaloneAhcWSClient = StandaloneAhcWSClient()
   val s3: WSS3 = S3(s3User, s3Password, "http", s3Host)
 
+  val kafkaProducerSettings = ProducerSettings(system, new StringSerializer, new StringSerializer)
+    // .withBootstrapServers(bootstrapServers)
 
   Source.tick(0.seconds, intervalPoll.seconds, Done).runForeach { _ =>
     Sftp
       .ls(sftpPath, settings)
       .filter(ftpFile => ftpFile.isFile && !ftpFile.name.endsWith(".transferred"))
       .mapAsyncUnordered(parallelism = 2) { ftpFile =>
-
         val data: Source[ByteString, _] = Sftp.fromPath(ftpFile.path, settings)
 
         for {
@@ -65,8 +72,8 @@ object SftpPoll extends App {
           _ <- data
             .alsoTo(storageObj.put[ByteString])
             .runWith(Sftp.move(file => file.path + ".transferred", settings).contramap(_ => ftpFile))
-        } yield ()
-      }
-      .runWith(Sink.ignore)
+        } yield Message(storageObj.bucket, storageObj.name)
+      }.map(message => new ProducerRecord[String, String](kafkaTopic, message.jsonify))
+      .runWith(Producer.plainSink(kafkaProducerSettings))
   }
 }
