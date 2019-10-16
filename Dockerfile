@@ -1,5 +1,7 @@
 FROM openjdk:8-jre-alpine
 
+RUN sed -i 's/file:\/dev\/random/file:\/dev\/urandom/' /usr/lib/jvm/java-1.8-openjdk/jre/lib/security/java.security
+
 RUN mkdir -p /opt/app
 WORKDIR /opt/app
 
